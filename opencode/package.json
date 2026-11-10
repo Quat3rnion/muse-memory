@@ -1,0 +1,14 @@
+{
+  "name": "opencode-muse-memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "opencode plugin: adds a short on-demand memory pointer to the system prompt of selected agents.",
+  "exports": {
+    ".": "./muse-memory.js"
+  },
+  "scripts": {
+    "test": "node --test muse-memory.test.mjs"
+  },
+  "license": "MIT"
+}

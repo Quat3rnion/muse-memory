@@ -1,0 +1,11 @@
+[Unit]
+Description=musemem: consolidate new opencode messages into memory claims
+After=network-online.target
+
+[Service]
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-%h/.config/muse-memory/env
+Type=oneshot
+ExecStart=%h/.local/share/muse-memory/musemem/bin/musemem.py consolidate
+Nice=10
+TimeoutStartSec=3h

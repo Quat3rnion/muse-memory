@@ -1,0 +1,149 @@
+# Mem0 stack for muse-memory: pgvector, the Mem0 REST server, the Mem0
+# dashboard and a one-shot configure job. Models run outside this stack on any
+# OpenAI-compatible server (see .env.example).
+#
+#   cp .env.example .env && chmod 600 .env   # then edit
+#   docker compose up -d --build
+#   docker compose --profile reranker up -d  # optional Infinity reranker
+name: muse-mem0
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mem0-db:
+    image: pgvector/pgvector:pg17@sha256:7ae6051efd0e60444282c27c7e141af07f322ce033300e727a49c3dd11075e38
+    restart: unless-stopped
+    logging: *logging
+    env_file: .env
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - mem0_db:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-mem0-app.sh:ro
+    shm_size: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+
+  mem0:
+    image: muse-mem0:local
+    build:
+      context: .
+      dockerfile: Dockerfile.mem0
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      mem0-db:
+        condition: service_healthy
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${MEM0_PORT:-9120}:8000"
+    env_file: .env
+    environment:
+      MEM0_DIR: /app/history/.mem0
+      DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:3120}
+      # Mem0 builds a default OpenAI client at start, before mem0-configure
+      # applies the full configuration. These values let that start succeed.
+      OPENAI_API_KEY: ${LLM_API_KEY:-no-key}
+      OPENAI_BASE_URL: ${LLM_BASE_URL}
+      MEM0_DEFAULT_LLM_MODEL: ${LLM_MODEL}
+      MEM0_DEFAULT_EMBEDDER_MODEL: ${EMBED_MODEL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - mem0_history:/app/history
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/auth/setup-status', timeout=5).read()",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    mem_limit: 1536m
+
+  mem0-configure:
+    image: muse-mem0:local
+    restart: "no"
+    logging: *logging
+    depends_on:
+      mem0:
+        condition: service_healthy
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: ["python", "/opt/mem0/configure.py"]
+    volumes:
+      - ./configure.py:/opt/mem0/configure.py:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+
+  mem0-dashboard:
+    image: muse-mem0-dashboard:local
+    build:
+      context: .
+      dockerfile: Dockerfile.mem0-dashboard
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      mem0:
+        condition: service_healthy
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${DASHBOARD_PORT:-3120}:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${DASHBOARD_API_URL:-http://localhost:9120}
+      API_INTERNAL_URL: http://mem0:8000
+      NEXT_PUBLIC_INSTANCE_NAME: muse-memory
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 512m
+
+  reranker:
+    # Optional cross-encoder reranker on CPU. Use a -amd or GPU tag for speed.
+    profiles: ["reranker"]
+    image: michaelf34/infinity:0.0.80-cpu
+    restart: unless-stopped
+    logging: *logging
+    command: ["v2", "--model-id", "BAAI/bge-reranker-v2-m3", "--port", "7997"]
+    volumes:
+      - reranker_cache:/app/.cache
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4g
+
+volumes:
+  mem0_db:
+  mem0_history:
+  reranker_cache:

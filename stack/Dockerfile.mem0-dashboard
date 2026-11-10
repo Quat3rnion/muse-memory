@@ -1,0 +1,30 @@
+# Official Mem0 dashboard, built from the same pinned commit as Dockerfile.mem0
+# (mem0ai 2.0.17). NEXT_PUBLIC_* values are set at container start (see compose.yaml).
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS src
+ARG MEM0_COMMIT=12c47f524935692e27ad48d829f35fa1e4417181
+ADD https://codeload.github.com/mem0ai/mem0/tar.gz/${MEM0_COMMIT} /src/mem0.tar.gz
+RUN mkdir -p /src/mem0 && tar -xzf /src/mem0.tar.gz --strip-components=1 -C /src/mem0
+
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY --from=src /src/mem0/server/dashboard/ ./
+RUN corepack enable pnpm && pnpm i --frozen-lockfile
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_API_URL=NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_INSTANCE_NAME=NEXT_PUBLIC_INSTANCE_NAME
+RUN npm run build
+
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=src --chown=nextjs:nodejs /src/mem0/server/dashboard/entrypoint.sh /home/nextjs/entrypoint.sh
+RUN chmod +x /home/nextjs/entrypoint.sh && chown -R nextjs:nodejs /app/.next
+USER nextjs
+EXPOSE 3000
+ENTRYPOINT ["/home/nextjs/entrypoint.sh"]
+CMD ["node", "server.js"]

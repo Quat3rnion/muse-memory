@@ -1,0 +1,42 @@
+{
+  "name": "openchamber-memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "View, browse and curate agent memories (musemem claims, Mem0 entries, dreams and the pinned block).",
+  "openchamber": {
+    "apiVersion": 1,
+    "contributes": {
+      "panel": {
+        "id": "memory",
+        "name": "Memory",
+        "icon": "brain-line",
+        "entry": "panel/index.html"
+      },
+      "page": true,
+      "service": {
+        "entry": "service/main.js",
+        "runtime": "host",
+        "permissions": {
+          "exec": [
+            "uv"
+          ]
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "bun run build:panel && bun run build:service",
+    "build:panel": "bun build panel/main.ts --outfile panel/main.js --format=iife --target=browser --minify",
+    "build:service": "bun build service/main.ts --outfile service/main.js --format=esm --target=node",
+    "test": "bun test",
+    "type-check": "tsc --noEmit",
+    "harness": "bun test/harness/dev.ts"
+  },
+  "devDependencies": {
+    "@openchamber/sdk": "^2.5.1",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
