@@ -14,7 +14,7 @@ stack on a different host. In that case, set `MEM0_URL` to that host in steps 3 
 ## 1. Get the code
 
 ```sh
-git clone https://github.com/<owner>/muse-memory.git ~/.local/share/muse-memory
+git clone https://github.com/Quat3rnion/muse-memory.git ~/.local/share/muse-memory
 cd ~/.local/share/muse-memory
 ```
 
